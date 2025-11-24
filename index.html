@@ -243,8 +243,21 @@
             timerInput.readOnly = false;
             STATE.timeLeft = STATE.originalTime;
             timerInput.value = formatTime(STATE.originalTime);
+
+            // [옵션 1] 레트로 레벨업 사운드
+            const synth = new Tone.Synth({
+                oscillator: { type: "triangle" }, // 부드러운 게임 사운드
+                envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+            }).toDestination();
+
+            const now = Tone.now();
+            synth.volume.value = -10;
+            // 도 - 미 - 솔 - 높은도 (빠르게)
+            synth.triggerAttackRelease("C5", "16n", now);
+            synth.triggerAttackRelease("E5", "16n", now + 0.1);
+            synth.triggerAttackRelease("G5", "16n", now + 0.2);
+            synth.triggerAttackRelease("C6", "8n",  now + 0.3);
             
-            const osc = new Tone.Oscillator("A6", "sine").toDestination().start().stop("+0.2");
             addLog("SYSTEM", "Session_Complete", 1.0);
         }
 
