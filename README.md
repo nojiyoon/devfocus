@@ -3,7 +3,7 @@
 **DevFocus**는 개발자와 디자이너의 몰입(Flow State)을 위해 설계된 **웹 기반 생성형 앰비언트 타이머**입니다.
 정해진 음악을 반복 재생하는 것이 아니라, 알고리즘에 의해 실시간으로 생성되는 무한한 사운드스케이프를 제공합니다.
 
-(스크린샷)
+<img width="2435" height="1445" alt="스크린샷 2025-11-24 114603" src="https://github.com/user-attachments/assets/2524f176-e306-4702-bf83-4379a0bb4d5e" />
 
 ## ✨ Key Features
 
