@@ -24,8 +24,6 @@ https://nojiyoon.github.io/devfocus/
 
 이 프로젝트는 외부 무거운 프레임워크 없이 **Vanilla JS**와 **Tone.js** (Web Audio API Wrapper) 만으로 구현되었습니다.
 
----
-
 ## 1\. Audio Architecture (Signal Flow)
 
 DevFocus의 사운드 엔진은 **Tone.js**를 사용하여 3개의 사운드 소스(Source)가 이펙트 체인(Chain)을 통과하며 하나의 '공간감 있는 소리'로 합쳐지는 구조입니다.
@@ -68,7 +66,6 @@ graph LR
           * **핵심 기술:** 마스터 출력 직전에 **1000Hz Low-Pass Filter**를 걸었습니다.
           * **이유:** 1000Hz 이상의 고음역대(날카로운 소리)를 깎아내어, 장시간 들어도 귀가 멍해지지 않는 \*\*'Lo-fi(로파이)하고 먹먹한 톤'\*\*을 완성했습니다.
 
------
 
 ## 2\. Log System (Algorithmic Visualization)
 
