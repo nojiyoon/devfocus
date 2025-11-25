@@ -22,11 +22,9 @@ https://nojiyoon.github.io/devfocus/
 
 ## 🛠 Technical Implementation
 
-이 프로젝트는 외부 무거운 프레임워크 없이 **Vanilla JS**와 **Tone.js** (Web Audio API Wrapper) 만으로 구현되었습니다.
+### 1\. Audio Architecture (Signal Flow)
 
-## 1\. Audio Architecture (Signal Flow)
-
-DevFocus의 사운드 엔진은 **Tone.js**를 사용하여 3개의 사운드 소스(Source)가 이펙트 체인(Chain)을 통과하며 하나의 '공간감 있는 소리'로 합쳐지는 구조입니다.
+DevFocus의 사운드 엔진은 **Tone.js**를 사용하여 소리의 생성부터 마스터링(Mastering)까지의 전 과정을 브라우저 내부에서 실시간으로 처리합니다.
 
 ### 🎛️ Signal Flow Diagram (신호 흐름도)
 
@@ -40,31 +38,40 @@ graph LR
 
     D --> E
     E --> F[Low-Pass Filter]
-    F --> G((Master Output))
+    F --> H[High-Pass Filter]
+    H --> I[Master Limiter]
+    I --> G((Master Output))
 
-    style F fill:#f96,stroke:#333,stroke-width:2px
+    style I fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 ### 🔍 Component Details (상세 설명)
 
-1.  **Generators (소리의 원천)**
+1.  **Generators (Sound Synthesis)**
 
       * **Warm Pad (`Tone.PolySynth` + `Sine`):**
-          * 가장 순수한 파형인 **'사인파(Sine Wave)**'를 사용했습니다. 배음(Harmonics)이 적어 귀가 피로하지 않습니다.
+          * **Warm Pad (Pure Sine):** 배음이 없는 순수한 사인파(Sine Wave)를 사용하여 뇌의 인지 부하(Cognitive Load)를 최소화했습니다. Attack과 Release를 길게 설정하여 안개처럼 피어오르는 질감을 구현했습니다.
           * **Envelope:** Attack(2s)과 Release(5s)를 길게 주어, 건반을 누르는 느낌이 아니라 **'안개처럼 피어오르는'** 효과를 냈습니다.
       * **Modular Blips (`Tone.FMSynth`):**
           * 주파수 변조(FM) 방식을 사용하여 톡톡 튀는 물방울 소리나 종소리 같은 **금속성 질감**을 만듭니다.
           * 불규칙한 리듬으로 재생되어, 정적인 음악에 생동감(Randomness)을 부여합니다.
-      * **Texture (`Tone.Noise` - Pink):**
-          * 완전한 무음(Digital Silence)은 오히려 긴장감을 줄 수 있습니다. 백색 소음보다 부드러운 **핑크 노이즈**를 아주 작게(-48dB) 깔아서, 아날로그 테이프 같은 따뜻한 바닥 소음을 형성합니다.
+      * **Texture (`Tone.Noise` - Pink Noise -58dB):**
+          * 완전한 무음(Digital Silence)은 오히려 긴장감을 줄 수 있습니다. 백색 소음보다 부드러운 **핑크 노이즈**를 아주 작게(-58dB) 깔아서, 아날로그 테이프 같은 따뜻한 바닥 소음을 형성합니다.
 
-2.  **Processors (이펙트 체인)**
+2.  **Processors & Mastering**
 
       * **PingPong Delay:** 소리가 왼쪽/오른쪽으로 번갈아 가며 메아리칩니다. 스테레오 이미지를 넓혀 공간감을 확장합니다.
       * **Reverb (Decay: 12s):** 아주 긴 잔향 시간을 설정하여, 마치 거대한 성당이나 우주 공간에 있는 듯한 느낌을 줍니다.
       * **Low-Pass Filter (The Key to 'Soft Tone'):**
-          * **핵심 기술:** 마스터 출력 직전에 **1000Hz Low-Pass Filter**를 걸었습니다.
-          * **이유:** 1000Hz 이상의 고음역대(날카로운 소리)를 깎아내어, 장시간 들어도 귀가 멍해지지 않는 **'Lo-fi(로파이)하고 먹먹한 톤**'을 완성했습니다.
+          * **핵심 기술:** 마스터 출력 직전에 **2000Hz Low-Pass Filter**를 걸었습니다.
+          * **이유:** 고음역대(날카로운 소리)를 깎아내어, 장시간 들어도 귀가 멍해지지 않는 **'Lo-fi(로파이)하고 먹먹한 톤**'을 완성했습니다.
+       
+3. **Audio Mastering Chain (Psychoacoustic Optimization)**
+
+      * DevFocus는 장시간 청취에도 피로감이 없도록 전문적인 오디오 마스터링 기법을 코드로 구현했습니다.
+          * **Rumble Filter (High-Pass at 100Hz):** 노트북이나 일반 스피커에서 볼륨을 높였을 때 발생하는 불필요한 저음 진동(Muddy Frequencies)을 제거하여, 깨끗하고 단단한 소리를 유지합니다.
+          * **Safety Limiter (-2dB):** 여러 루프가 우연히 동시에 겹칠 때 발생할 수 있는 클리핑(소리 찢어짐)을 방지하는 안전장치입니다.
+          * **Reduced Resonance:** Reverb의 Decay 시간을 기존 12초에서 8초로 최적화하여, 소리가 뭉치거나 울리는 현상(Resonance Buildup)을 제어했습니다.
 
 
 ## 2\. Log System (Algorithmic Visualization)
