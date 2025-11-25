@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevFocus: Flow State</title>
+    <title>DevFocus: Flow State (Refined Audio)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <style>
         :root { 
@@ -11,8 +11,8 @@
             --text: #c9d1d9; 
             --dim: #8b949e; 
             --accent: #58a6ff;
-            --log-source: #79c0ff; /* Blue for Source */
-            --log-note: #d2a8ff;   /* Purple for Notes */
+            --log-source: #79c0ff;
+            --log-note: #d2a8ff;   
             --btn-border: #30363d;
         }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg); font-family: 'Fira Code', 'Consolas', monospace; overflow: hidden; color: var(--text); }
@@ -38,7 +38,7 @@
             background: transparent; border: 1px solid var(--btn-border); color: var(--accent);
             padding: 15px 30px; font-size: 1rem; cursor: pointer; transition: all 0.2s ease;
             font-family: inherit; border-radius: 6px; text-transform: uppercase; letter-spacing: 1.5px;
-            min-width: 160px; background: rgba(13, 17, 23, 0.8); /* Slight bg for readability over logs */
+            min-width: 160px; background: rgba(13, 17, 23, 0.8);
         }
         button:hover { border-color: var(--accent); background: rgba(88, 166, 255, 0.1); }
         button:active { transform: translateY(1px); }
@@ -46,14 +46,14 @@
         button.primary-active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
         button.primary-active:hover { background: #79c0ff; border-color: #79c0ff; }
 
-        /* --- Terminal Log Stack (Restored) --- */
+        /* --- Terminal Log Stack --- */
         #log-container {
-            position: absolute; bottom: 30px; left: 30px; /* Left aligned like the screenshot */
+            position: absolute; bottom: 30px; left: 30px;
             width: 500px; height: 250px;
             overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
             pointer-events: none; opacity: 0; transition: opacity 1s; 
             font-size: 0.85rem; line-height: 1.6;
-            mask-image: linear-gradient(to bottom, transparent, black 20%); /* Fade out top logs */
+            mask-image: linear-gradient(to bottom, transparent, black 20%);
             -webkit-mask-image: linear-gradient(to bottom, transparent, black 20%);
         }
         .log-entry { 
@@ -106,32 +106,44 @@
         const logContainer = document.getElementById('log-container');
         const halo = document.getElementById('halo');
 
-        // --- Audio Engine ---
-        let padSynth, modularSynth, noise, filter, reverb, delay;
+        // --- Audio Engine (Refined) ---
+        let padSynth, modularSynth, noise, lowPassFilter, highPassFilter, reverb, delay, limiter;
 
         async function initAudio() {
             await Tone.start();
             
-            // Soft Filter Chain
-            filter = new Tone.Filter(1000, "lowpass").toDestination();
-            reverb = new Tone.Reverb({ decay: 12, wet: 0.5 }).connect(filter);
-            delay = new Tone.PingPongDelay({ delayTime: "8n.", feedback: 0.2, wet: 0.3 }).connect(reverb);
+            // [Fix 3] Master Limiter: 소리가 커졌을 때 찢어지는 현상 방지
+            limiter = new Tone.Limiter(-2).toDestination();
+
+            // [Fix 1] Rumble Filter: 웅웅거리는 초저역대(100Hz 이하)를 잘라냄
+            highPassFilter = new Tone.Filter(100, "highpass").connect(limiter);
+
+            // Mood Filter: 전체적으로 부드러운 느낌을 위한 로우패스
+            lowPassFilter = new Tone.Filter(2000, "lowpass").connect(highPassFilter);
+
+            // [Fix 2] Reverb Taming: Decay 12초 -> 8초, Wet 0.5 -> 0.3 (울림 감소)
+            reverb = new Tone.Reverb({ decay: 8, preDelay: 0.1, wet: 0.3 }).connect(lowPassFilter);
+            
+            // Delay: 피드백을 줄여서 소리가 덜 겹치게 함
+            delay = new Tone.PingPongDelay({ delayTime: "8n.", feedback: 0.15, wet: 0.25 }).connect(reverb);
 
             // Instruments
             padSynth = new Tone.PolySynth(Tone.Synth, {
-                oscillator: { type: "sine" },
-                envelope: { attack: 2, decay: 3, sustain: 0.6, release: 5 }
+                oscillator: { type: "sine" }, // 순수한 사인파로 변경하여 거친 느낌 제거
+                envelope: { attack: 2, decay: 3, sustain: 0.5, release: 4 }
             }).connect(delay);
-            padSynth.volume.value = -12;
+            padSynth.volume.value = -14; // 볼륨 약간 하향
 
             modularSynth = new Tone.PolySynth(Tone.FMSynth, {
-                harmonicity: 3, modulationIndex: 5,
+                harmonicity: 3, modulationIndex: 3, // 변조 지수를 낮춰서 덜 자극적이게
                 envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.3 }
             }).connect(reverb);
-            modularSynth.volume.value = -18;
+            modularSynth.volume.value = -20;
 
-            noise = new Tone.Noise("pink").connect(filter);
-            noise.volume.value = -48; 
+            // [Fix 1 Related] Noise Adjustment
+            noise = new Tone.Noise("pink").connect(lowPassFilter);
+            // 볼륨을 대폭 낮춤 (-48 -> -58) 배경 질감만 남김
+            noise.volume.value = -58; 
             noise.start();
 
             // Sequencer
@@ -144,7 +156,6 @@
                     const note = scale[Math.floor(Math.random() * scale.length)];
                     padSynth.triggerAttackRelease(note, "1n", time);
                     
-                    // Log Formatting
                     Tone.Draw.schedule(() => {
                         addLog("LOOP_PAD", note, 0.5);
                         pulseHalo(false);
@@ -160,9 +171,8 @@
                     
                     modularSynth.triggerAttackRelease(octaveNote, "32n", time);
                     
-                    // Log Formatting (Ensure actual note name is displayed)
                     Tone.Draw.schedule(() => {
-                        const noteName = octaveNote.toNote(); // Fix: Convert Frequency to String
+                        const noteName = octaveNote.toNote();
                         const loopName = loopIds[Math.floor(Math.random() * loopIds.length)];
                         addLog(loopName, noteName, 0.4 + Math.random() * 0.2);
                         pulseHalo(true);
@@ -203,7 +213,7 @@
             toggleBtn.innerText = "PAUSE"; 
             toggleBtn.classList.add('primary-active');
             timerInput.readOnly = true;
-            logContainer.style.opacity = 1; // Show Logs
+            logContainer.style.opacity = 1; 
             
             STATE.isPlaying = true;
             
@@ -221,7 +231,7 @@
             toggleBtn.innerText = "RESUME FOCUS";
             toggleBtn.classList.remove('primary-active');
             timerInput.readOnly = false;
-            logContainer.style.opacity = 0.3; // Dim Logs
+            logContainer.style.opacity = 0.3; 
             
             STATE.isPlaying = false;
             addLog("SYSTEM", "Session_Paused", 0.0);
@@ -233,7 +243,7 @@
             timerInput.value = formatTime(STATE.originalTime);
             toggleBtn.innerText = "START FOCUS";
             Tone.Transport.stop();
-            logContainer.innerHTML = ""; // Clear logs
+            logContainer.innerHTML = ""; 
             addLog("SYSTEM", "Timer_Reset", 0.0);
         }
 
@@ -244,15 +254,13 @@
             STATE.timeLeft = STATE.originalTime;
             timerInput.value = formatTime(STATE.originalTime);
 
-            // [옵션 1] 레트로 레벨업 사운드
             const synth = new Tone.Synth({
-                oscillator: { type: "triangle" }, // 부드러운 게임 사운드
+                oscillator: { type: "triangle" }, 
                 envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
             }).toDestination();
 
             const now = Tone.now();
             synth.volume.value = -10;
-            // 도 - 미 - 솔 - 높은도 (빠르게)
             synth.triggerAttackRelease("C5", "16n", now);
             synth.triggerAttackRelease("E5", "16n", now + 0.1);
             synth.triggerAttackRelease("G5", "16n", now + 0.2);
@@ -261,7 +269,6 @@
             addLog("SYSTEM", "Session_Complete", 1.0);
         }
 
-        // --- Log Stack Logic (The Requested Feature) ---
         function addLog(source, note, vol) {
             const div = document.createElement('div');
             div.className = 'log-entry';
@@ -269,12 +276,10 @@
             const now = new Date();
             const ts = `[${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}]`;
             
-            // HTML Formatting to match screenshot colors
             div.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-src">${source}</span> :: emit(<span class="log-note">${note}</span>) vol:${vol.toFixed(2)}`;
             
             logContainer.appendChild(div);
             
-            // Keep strictly 12 lines max
             if (logContainer.children.length > 12) {
                 logContainer.removeChild(logContainer.firstChild);
             }
@@ -287,7 +292,6 @@
             setTimeout(() => { halo.style.boxShadow = `0 0 0 0 rgba(88, 166, 255, 0)`; }, 1000);
         }
 
-        // --- Events ---
         toggleBtn.addEventListener('click', () => STATE.isPlaying ? pauseTimer() : startTimer());
         resetBtn.addEventListener('click', resetTimer);
         timerInput.addEventListener('keydown', (e) => {
