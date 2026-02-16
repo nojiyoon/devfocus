@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevFocus: Flow State (Refined Audio)</title>
+    <title>DevFocus: Flow State</title>
+    <meta name="description" content="개발자를 위한 생성형 앰비언트 사운드 타이머. 집중력을 높이는 제너레이티브 오디오와 포모도로 타이머.">
+    <meta property="og:title" content="DevFocus: Flow State">
+    <meta property="og:description" content="개발자를 위한 생성형 앰비언트 사운드 타이머">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nojiyoon.github.io/devfocus">
+    <meta name="theme-color" content="#0d1117">
+    <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <style>
         :root { 
@@ -14,25 +21,57 @@
             --log-source: #79c0ff;
             --log-note: #d2a8ff;   
             --btn-border: #30363d;
+            --danger: #f85149;
+            --success: #3fb950;
         }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: var(--bg); font-family: 'Fira Code', 'Consolas', monospace; overflow: hidden; color: var(--text); }
         
-        #app { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; position: relative; z-index: 10; gap: 40px; }
+        #app { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; position: relative; z-index: 10; gap: 30px; }
         
+        /* --- Stats Display --- */
+        .stats-display {
+            font-size: 0.8rem; color: var(--dim); text-align: center;
+            letter-spacing: 0.5px; min-height: 1.2em;
+        }
+
         /* --- Timer Input Style --- */
-        .timer-container { position: relative; display: flex; flex-direction: column; align-items: center; margin-bottom: 20px; }
+        .timer-container { position: relative; display: flex; flex-direction: column; align-items: center; }
         
         #timer-input {
-            font-size: 6rem; font-weight: 700; color: var(--text);
+            font-size: clamp(2.5rem, 10vw, 6rem); font-weight: 700; color: var(--text);
             background: transparent; border: none; outline: none;
-            text-align: center; width: 450px; font-family: inherit;
+            text-align: center; width: min(450px, calc(100vw - 40px)); font-family: inherit;
             border-bottom: 2px solid transparent; transition: border-color 0.3s;
             cursor: text;
         }
+        #timer-input:focus-visible { border-bottom: 2px solid var(--accent); }
         #timer-input:focus { border-bottom: 2px solid var(--accent); }
         
+        /* --- Preset Buttons --- */
+        .presets { display: flex; gap: 10px; margin-top: 8px; }
+        .preset-btn {
+            background: transparent; border: 1px solid var(--btn-border); color: var(--dim);
+            padding: 4px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
+            border-radius: 4px; transition: all 0.2s; min-width: auto; letter-spacing: 0.5px;
+        }
+        .preset-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+        /* --- Break Banner --- */
+        .break-banner {
+            font-size: 0.85rem; color: var(--success); text-align: center;
+            display: none; letter-spacing: 0.5px;
+        }
+        .break-banner.active { display: block; }
+
+        /* --- Pomodoro Toggle --- */
+        .pomo-toggle {
+            display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--dim);
+            cursor: pointer; user-select: none;
+        }
+        .pomo-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+
         /* --- Button Group --- */
-        .controls { display: flex; gap: 20px; z-index: 20; }
+        .controls { display: flex; gap: 20px; z-index: 20; flex-wrap: wrap; justify-content: center; }
         
         button {
             background: transparent; border: 1px solid var(--btn-border); color: var(--accent);
@@ -42,14 +81,23 @@
         }
         button:hover { border-color: var(--accent); background: rgba(88, 166, 255, 0.1); }
         button:active { transform: translateY(1px); }
+        button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         
         button.primary-active { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: bold; }
         button.primary-active:hover { background: #79c0ff; border-color: #79c0ff; }
 
+        /* --- Error Display --- */
+        .error-msg {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(248, 81, 73, 0.15); border: 1px solid var(--danger);
+            color: var(--danger); padding: 10px 20px; border-radius: 6px;
+            font-size: 0.8rem; z-index: 100; display: none;
+        }
+
         /* --- Terminal Log Stack --- */
         #log-container {
             position: absolute; bottom: 30px; left: 30px;
-            width: 500px; height: 250px;
+            width: min(500px, calc(100vw - 40px)); height: 250px;
             overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end;
             pointer-events: none; opacity: 0; transition: opacity 1s; 
             font-size: 0.85rem; line-height: 1.6;
@@ -64,6 +112,28 @@
         .log-src { color: var(--log-source); font-weight: bold; margin-right: 5px; }
         .log-note { color: var(--log-note); }
 
+        /* --- Volume Control --- */
+        .volume-control {
+            position: fixed; bottom: 20px; right: 20px; z-index: 50;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .volume-control label { font-size: 0.75rem; color: var(--dim); cursor: default; }
+        .volume-slider {
+            -webkit-appearance: none; appearance: none;
+            width: 80px; height: 4px; background: var(--btn-border);
+            border-radius: 2px; outline: none; cursor: pointer;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 12px; height: 12px; border-radius: 50%;
+            background: var(--accent); cursor: pointer;
+        }
+        .volume-slider::-moz-range-thumb {
+            width: 12px; height: 12px; border-radius: 50%;
+            background: var(--accent); cursor: pointer; border: none;
+        }
+        .volume-slider:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
         /* --- Visual Feedback --- */
         #halo {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -72,234 +142,608 @@
         }
 
         @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 0.8; transform: translateY(0); } }
+
+        /* --- Mobile --- */
+        @media (max-width: 600px) {
+            .controls { gap: 10px; }
+            button { padding: 12px 20px; font-size: 0.85rem; min-width: 130px; }
+            #log-container { left: 15px; bottom: 15px; font-size: 0.75rem; }
+            .volume-control { bottom: 10px; right: 10px; }
+        }
     </style>
 </head>
 <body>
 
+    <div id="error-msg" class="error-msg" role="alert"></div>
     <div id="halo"></div>
     
     <div id="app">
+        <div class="stats-display" id="stats-display" aria-label="세션 통계"></div>
+
         <div class="timer-container">
-            <input type="text" id="timer-input" value="25:00" spellcheck="false">
+            <input type="text" id="timer-input" value="25:00" spellcheck="false" aria-label="타이머 시간 입력">
+            <div class="presets">
+                <button class="preset-btn" data-minutes="25" aria-label="25분 프리셋">25min</button>
+                <button class="preset-btn" data-minutes="50" aria-label="50분 프리셋">50min</button>
+                <button class="preset-btn" data-minutes="90" aria-label="90분 프리셋">90min</button>
+            </div>
         </div>
+
+        <div class="break-banner" id="break-banner" aria-live="polite"></div>
 
         <div class="controls">
-            <button id="toggle-btn">START FOCUS</button>
-            <button id="reset-btn">RESET</button>
+            <button id="toggle-btn" aria-label="포커스 시작">START FOCUS</button>
+            <button id="reset-btn" aria-label="타이머 리셋">RESET</button>
         </div>
+
+        <label class="pomo-toggle">
+            <input type="checkbox" id="pomo-toggle" checked> 포모도로 모드 (휴식 포함)
+        </label>
     </div>
 
-    <div id="log-container"></div>
+    <div id="log-container" aria-hidden="true"></div>
+
+    <div class="volume-control">
+        <label for="volume-slider" aria-label="볼륨">🔊</label>
+        <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="70"
+               aria-label="볼륨 조절" aria-valuemin="0" aria-valuemax="100">
+    </div>
 
     <script>
-        // --- System State ---
-        const STATE = {
-            isPlaying: false,
-            timerInterval: null,
-            timeLeft: 25 * 60,
-            originalTime: 25 * 60
+    (() => {
+        'use strict';
+
+        // ========== CONFIG ==========
+        const CONFIG = {
+            DEFAULT_MINUTES: 25,
+            MIN_MINUTES: 1,
+            MAX_MINUTES: 180,
+            SCALE: ["C3", "E3", "G3", "B3", "D4", "F#4", "A4"],
+            LOOP_IDS: ["LOOP_ALPHA", "LOOP_BETA", "LOOP_GAMMA", "LOOP_DELTA"],
+            PAD_VOLUME: -14,
+            MODULAR_VOLUME: -20,
+            NOISE_VOLUME: -58,
+            LIMITER_THRESHOLD: -2,
+            HIGHPASS_FREQ: 100,
+            LOWPASS_FREQ: 2000,
+            REVERB_DECAY: 8,
+            REVERB_WET: 0.3,
+            DELAY_FEEDBACK: 0.15,
+            DELAY_WET: 0.25,
+            FADE_IN_SEC: 2,
+            FADE_OUT_SEC: 1,
+            MAX_LOG_ENTRIES: 12,
+            FINISH_SYNTH_DISPOSE_MS: 2000,
+            SHORT_BREAK_MIN: 5,
+            LONG_BREAK_MIN: 15,
+            LONG_BREAK_INTERVAL: 4,
+            STORAGE_KEY_STATS: 'devfocus_stats',
+            STORAGE_KEY_VOLUME: 'devfocus_volume',
+            ORIGINAL_TITLE: 'DevFocus: Flow State',
         };
 
-        const timerInput = document.getElementById('timer-input');
-        const toggleBtn = document.getElementById('toggle-btn');
-        const resetBtn = document.getElementById('reset-btn');
-        const logContainer = document.getElementById('log-container');
-        const halo = document.getElementById('halo');
+        // ========== StatsManager ==========
+        class StatsManager {
+            constructor() {
+                this.data = this._load();
+            }
 
-        // --- Audio Engine (Refined) ---
-        let padSynth, modularSynth, noise, lowPassFilter, highPassFilter, reverb, delay, limiter;
+            _load() {
+                try {
+                    const raw = localStorage.getItem(CONFIG.STORAGE_KEY_STATS);
+                    if (raw) return JSON.parse(raw);
+                } catch {}
+                return { totalSessions: 0, totalMinutes: 0, todaySessions: 0, todayMinutes: 0, todayDate: '', streak: 0, lastDate: '' };
+            }
 
-        async function initAudio() {
-            await Tone.start();
-            
-            // [Fix 3] Master Limiter: 소리가 커졌을 때 찢어지는 현상 방지
-            limiter = new Tone.Limiter(-2).toDestination();
+            _save() {
+                try { localStorage.setItem(CONFIG.STORAGE_KEY_STATS, JSON.stringify(this.data)); } catch {}
+            }
 
-            // [Fix 1] Rumble Filter: 웅웅거리는 초저역대(100Hz 이하)를 잘라냄
-            highPassFilter = new Tone.Filter(100, "highpass").connect(limiter);
-
-            // Mood Filter: 전체적으로 부드러운 느낌을 위한 로우패스
-            lowPassFilter = new Tone.Filter(2000, "lowpass").connect(highPassFilter);
-
-            // [Fix 2] Reverb Taming: Decay 12초 -> 8초, Wet 0.5 -> 0.3 (울림 감소)
-            reverb = new Tone.Reverb({ decay: 8, preDelay: 0.1, wet: 0.3 }).connect(lowPassFilter);
-            
-            // Delay: 피드백을 줄여서 소리가 덜 겹치게 함
-            delay = new Tone.PingPongDelay({ delayTime: "8n.", feedback: 0.15, wet: 0.25 }).connect(reverb);
-
-            // Instruments
-            padSynth = new Tone.PolySynth(Tone.Synth, {
-                oscillator: { type: "sine" }, // 순수한 사인파로 변경하여 거친 느낌 제거
-                envelope: { attack: 2, decay: 3, sustain: 0.5, release: 4 }
-            }).connect(delay);
-            padSynth.volume.value = -14; // 볼륨 약간 하향
-
-            modularSynth = new Tone.PolySynth(Tone.FMSynth, {
-                harmonicity: 3, modulationIndex: 3, // 변조 지수를 낮춰서 덜 자극적이게
-                envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.3 }
-            }).connect(reverb);
-            modularSynth.volume.value = -20;
-
-            // [Fix 1 Related] Noise Adjustment
-            noise = new Tone.Noise("pink").connect(lowPassFilter);
-            // 볼륨을 대폭 낮춤 (-48 -> -58) 배경 질감만 남김
-            noise.volume.value = -58; 
-            noise.start();
-
-            // Sequencer
-            const scale = ["C3", "E3", "G3", "B3", "D4", "F#4", "A4"]; 
-            const loopIds = ["LOOP_ALPHA", "LOOP_BETA", "LOOP_GAMMA", "LOOP_DELTA"];
-
-            // Pad Layer
-            new Tone.Loop(time => {
-                if (Math.random() < 0.6) {
-                    const note = scale[Math.floor(Math.random() * scale.length)];
-                    padSynth.triggerAttackRelease(note, "1n", time);
-                    
-                    Tone.Draw.schedule(() => {
-                        addLog("LOOP_PAD", note, 0.5);
-                        pulseHalo(false);
-                    }, time);
-                }
-            }, "7n").start(0);
-
-            // Modular Layer
-            new Tone.Loop(time => {
-                if (Math.random() < 0.4) {
-                    const rawNote = scale[Math.floor(Math.random() * scale.length)];
-                    const octaveNote = Tone.Frequency(rawNote).transpose(12);
-                    
-                    modularSynth.triggerAttackRelease(octaveNote, "32n", time);
-                    
-                    Tone.Draw.schedule(() => {
-                        const noteName = octaveNote.toNote();
-                        const loopName = loopIds[Math.floor(Math.random() * loopIds.length)];
-                        addLog(loopName, noteName, 0.4 + Math.random() * 0.2);
-                        pulseHalo(true);
-                    }, time);
-                }
-            }, "8n").start(0);
-        }
-
-        // --- Timer Logic ---
-        function formatTime(seconds) {
-            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const s = (seconds % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
-        }
-
-        function parseTimeInput(str) {
-            const parts = str.split(':');
-            if (parts.length === 1) return parseInt(parts[0]) * 60;
-            if (parts.length === 2) return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-            return 25 * 60; 
-        }
-
-        function startTimer() {
-            if (!STATE.isPlaying && STATE.timeLeft === STATE.originalTime) {
-                const val = parseTimeInput(timerInput.value);
-                if (!isNaN(val) && val > 0) {
-                    STATE.originalTime = val;
-                    STATE.timeLeft = val;
+            _ensureToday() {
+                const today = new Date().toISOString().slice(0, 10);
+                if (this.data.todayDate !== today) {
+                    // Check streak
+                    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+                    if (this.data.lastDate === yesterday) {
+                        this.data.streak++;
+                    } else if (this.data.lastDate !== today) {
+                        this.data.streak = 0;
+                    }
+                    this.data.todaySessions = 0;
+                    this.data.todayMinutes = 0;
+                    this.data.todayDate = today;
                 }
             }
 
-            STATE.timerInterval = setInterval(() => {
-                STATE.timeLeft--;
-                timerInput.value = formatTime(STATE.timeLeft);
-                if (STATE.timeLeft <= 0) finishSession();
+            recordSession(minutes) {
+                this._ensureToday();
+                this.data.totalSessions++;
+                this.data.totalMinutes += minutes;
+                this.data.todaySessions++;
+                this.data.todayMinutes += minutes;
+                this.data.lastDate = this.data.todayDate;
+                this._save();
+            }
+
+            getDisplayText() {
+                this._ensureToday();
+                const { todaySessions, todayMinutes, streak } = this.data;
+                if (todaySessions === 0 && streak === 0) return '';
+                let text = `오늘 ${todaySessions}세션 · ${todayMinutes}분`;
+                if (streak > 0) text += ` · 🔥${streak}일 연속`;
+                return text;
+            }
+        }
+
+        // ========== AudioEngine ==========
+        class AudioEngine {
+            constructor() {
+                this.initialized = false;
+                this.padSynth = null;
+                this.modularSynth = null;
+                this.noise = null;
+                this.lowPassFilter = null;
+                this.highPassFilter = null;
+                this.reverb = null;
+                this.delay = null;
+                this.limiter = null;
+                this._targetVolume = -14;
+            }
+
+            async init() {
+                if (this.initialized) return;
+                try {
+                    await Tone.start();
+
+                    this.limiter = new Tone.Limiter(CONFIG.LIMITER_THRESHOLD).toDestination();
+                    this.highPassFilter = new Tone.Filter(CONFIG.HIGHPASS_FREQ, "highpass").connect(this.limiter);
+                    this.lowPassFilter = new Tone.Filter(CONFIG.LOWPASS_FREQ, "lowpass").connect(this.highPassFilter);
+                    this.reverb = new Tone.Reverb({ decay: CONFIG.REVERB_DECAY, preDelay: 0.1, wet: CONFIG.REVERB_WET }).connect(this.lowPassFilter);
+                    this.delay = new Tone.PingPongDelay({ delayTime: "8n.", feedback: CONFIG.DELAY_FEEDBACK, wet: CONFIG.DELAY_WET }).connect(this.reverb);
+
+                    this.padSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: { type: "sine" },
+                        envelope: { attack: 2, decay: 3, sustain: 0.5, release: 4 }
+                    }).connect(this.delay);
+                    this.padSynth.volume.value = CONFIG.PAD_VOLUME;
+
+                    this.modularSynth = new Tone.PolySynth(Tone.FMSynth, {
+                        harmonicity: 3, modulationIndex: 3,
+                        envelope: { attack: 0.01, decay: 0.3, sustain: 0, release: 0.3 }
+                    }).connect(this.reverb);
+                    this.modularSynth.volume.value = CONFIG.MODULAR_VOLUME;
+
+                    this.noise = new Tone.Noise("pink").connect(this.lowPassFilter);
+                    this.noise.volume.value = CONFIG.NOISE_VOLUME;
+                    this.noise.start();
+
+                    this._setupSequencer();
+                    this.initialized = true;
+                } catch (err) {
+                    throw new Error(`오디오 초기화 실패: ${err.message}`);
+                }
+            }
+
+            _setupSequencer() {
+                new Tone.Loop(time => {
+                    if (Math.random() < 0.6) {
+                        const note = CONFIG.SCALE[Math.floor(Math.random() * CONFIG.SCALE.length)];
+                        this.padSynth.triggerAttackRelease(note, "1n", time);
+                        Tone.Draw.schedule(() => {
+                            ui.addLog("LOOP_PAD", note, 0.5);
+                            ui.pulseHalo(false);
+                        }, time);
+                    }
+                }, "7n").start(0);
+
+                new Tone.Loop(time => {
+                    if (Math.random() < 0.4) {
+                        const rawNote = CONFIG.SCALE[Math.floor(Math.random() * CONFIG.SCALE.length)];
+                        const octaveNote = Tone.Frequency(rawNote).transpose(12);
+                        this.modularSynth.triggerAttackRelease(octaveNote, "32n", time);
+                        Tone.Draw.schedule(() => {
+                            const noteName = octaveNote.toNote();
+                            const loopName = CONFIG.LOOP_IDS[Math.floor(Math.random() * CONFIG.LOOP_IDS.length)];
+                            ui.addLog(loopName, noteName, 0.4 + Math.random() * 0.2);
+                            ui.pulseHalo(true);
+                        }, time);
+                    }
+                }, "8n").start(0);
+            }
+
+            fadeIn() {
+                const vol = this._dbFromSlider(ui.getVolume());
+                Tone.Destination.volume.value = -60;
+                Tone.Destination.volume.rampTo(vol, CONFIG.FADE_IN_SEC);
+            }
+
+            fadeOut() {
+                return new Promise(resolve => {
+                    Tone.Destination.volume.rampTo(-60, CONFIG.FADE_OUT_SEC);
+                    setTimeout(resolve, CONFIG.FADE_OUT_SEC * 1000);
+                });
+            }
+
+            setVolume(sliderValue) {
+                const db = this._dbFromSlider(sliderValue);
+                this._targetVolume = db;
+                if (Tone.Transport.state === 'started') {
+                    Tone.Destination.volume.rampTo(db, 0.1);
+                }
+            }
+
+            _dbFromSlider(val) {
+                if (val <= 0) return -Infinity;
+                return -40 + (val / 100) * 40; // 0→-40dB, 100→0dB
+            }
+
+            start() {
+                this.fadeIn();
+                Tone.Transport.start();
+            }
+
+            async pause() {
+                await this.fadeOut();
+                Tone.Transport.pause();
+                if (this.padSynth) this.padSynth.releaseAll();
+            }
+
+            stop() {
+                Tone.Transport.stop();
+            }
+
+            async resume() {
+                try { await Tone.context.resume(); } catch {}
+            }
+
+            playFinishChime() {
+                const synth = new Tone.Synth({
+                    oscillator: { type: "triangle" },
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+                }).toDestination();
+
+                const now = Tone.now();
+                synth.volume.value = -10;
+                synth.triggerAttackRelease("C5", "16n", now);
+                synth.triggerAttackRelease("E5", "16n", now + 0.1);
+                synth.triggerAttackRelease("G5", "16n", now + 0.2);
+                synth.triggerAttackRelease("C6", "8n", now + 0.3);
+
+                setTimeout(() => { try { synth.dispose(); } catch {} }, CONFIG.FINISH_SYNTH_DISPOSE_MS);
+            }
+        }
+
+        // ========== TimerManager ==========
+        class TimerManager {
+            constructor() {
+                this.isPlaying = false;
+                this.isBreak = false;
+                this.timerInterval = null;
+                this.timeLeft = CONFIG.DEFAULT_MINUTES * 60;
+                this.originalTime = CONFIG.DEFAULT_MINUTES * 60;
+                this.completedSessions = 0;
+            }
+
+            parseTimeInput(str) {
+                const trimmed = (str || '').trim();
+                // Accept MM:SS or just M (minutes)
+                const matchMMSS = trimmed.match(/^(\d{1,3}):(\d{1,2})$/);
+                const matchMin = trimmed.match(/^(\d{1,3})$/);
+
+                let totalSeconds;
+                if (matchMMSS) {
+                    totalSeconds = parseInt(matchMMSS[1], 10) * 60 + parseInt(matchMMSS[2], 10);
+                } else if (matchMin) {
+                    totalSeconds = parseInt(matchMin[1], 10) * 60;
+                } else {
+                    return null; // invalid
+                }
+
+                const totalMinutes = totalSeconds / 60;
+                if (totalMinutes < CONFIG.MIN_MINUTES || totalMinutes > CONFIG.MAX_MINUTES) {
+                    return null;
+                }
+                return totalSeconds;
+            }
+
+            formatTime(seconds) {
+                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const s = (seconds % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            }
+
+            getBreakMinutes() {
+                if (this.completedSessions > 0 && this.completedSessions % CONFIG.LONG_BREAK_INTERVAL === 0) {
+                    return CONFIG.LONG_BREAK_MIN;
+                }
+                return CONFIG.SHORT_BREAK_MIN;
+            }
+        }
+
+        // ========== UIController ==========
+        class UIController {
+            constructor() {
+                this.els = {
+                    timerInput: document.getElementById('timer-input'),
+                    toggleBtn: document.getElementById('toggle-btn'),
+                    resetBtn: document.getElementById('reset-btn'),
+                    logContainer: document.getElementById('log-container'),
+                    halo: document.getElementById('halo'),
+                    statsDisplay: document.getElementById('stats-display'),
+                    volumeSlider: document.getElementById('volume-slider'),
+                    errorMsg: document.getElementById('error-msg'),
+                    breakBanner: document.getElementById('break-banner'),
+                    pomoToggle: document.getElementById('pomo-toggle'),
+                };
+                this._initVolume();
+                this._bindEvents();
+                this._bindKeyboard();
+                this._bindVisibility();
+            }
+
+            _initVolume() {
+                try {
+                    const saved = localStorage.getItem(CONFIG.STORAGE_KEY_VOLUME);
+                    if (saved !== null) this.els.volumeSlider.value = saved;
+                } catch {}
+            }
+
+            getVolume() {
+                return parseInt(this.els.volumeSlider.value, 10);
+            }
+
+            _bindEvents() {
+                this.els.toggleBtn.addEventListener('click', () => handleToggle());
+                this.els.resetBtn.addEventListener('click', () => handleReset());
+
+                this.els.timerInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        this.els.timerInput.blur();
+                        if (!timer.isPlaying) handleToggle();
+                    }
+                });
+
+                this.els.volumeSlider.addEventListener('input', () => {
+                    const val = this.getVolume();
+                    try { localStorage.setItem(CONFIG.STORAGE_KEY_VOLUME, val); } catch {}
+                    audio.setVolume(val);
+                });
+
+                document.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if (timer.isPlaying) return;
+                        const min = parseInt(btn.dataset.minutes, 10);
+                        timer.originalTime = min * 60;
+                        timer.timeLeft = min * 60;
+                        this.els.timerInput.value = timer.formatTime(timer.timeLeft);
+                    });
+                });
+            }
+
+            _bindKeyboard() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.target.tagName === 'INPUT') return;
+                    if (e.key === ' ') { e.preventDefault(); handleToggle(); }
+                    if (e.key === 'r' || e.key === 'R') { if (!timer.isPlaying) handleReset(); }
+                });
+            }
+
+            _bindVisibility() {
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && timer.isPlaying) {
+                        audio.resume();
+                    }
+                });
+            }
+
+            addLog(source, note, vol) {
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+                const now = new Date();
+                const ts = `[${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}]`;
+                div.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-src">${source}</span> :: emit(<span class="log-note">${note}</span>) vol:${vol.toFixed(2)}`;
+                this.els.logContainer.appendChild(div);
+                if (this.els.logContainer.children.length > CONFIG.MAX_LOG_ENTRIES) {
+                    this.els.logContainer.removeChild(this.els.logContainer.firstChild);
+                }
+            }
+
+            pulseHalo(isStrong) {
+                const size = isStrong ? "100px" : "50px";
+                const opacity = isStrong ? "0.15" : "0.05";
+                this.els.halo.style.boxShadow = `0 0 ${size} ${size} rgba(88, 166, 255, ${opacity})`;
+                setTimeout(() => { this.els.halo.style.boxShadow = `0 0 0 0 rgba(88, 166, 255, 0)`; }, 1000);
+            }
+
+            showError(msg) {
+                this.els.errorMsg.textContent = msg;
+                this.els.errorMsg.style.display = 'block';
+                setTimeout(() => { this.els.errorMsg.style.display = 'none'; }, 5000);
+            }
+
+            updateTitle(timeStr) {
+                document.title = timeStr ? `${timeStr} — DevFocus` : CONFIG.ORIGINAL_TITLE;
+            }
+
+            updateStats(text) {
+                this.els.statsDisplay.textContent = text;
+            }
+
+            setPlaying() {
+                this.els.toggleBtn.innerText = "PAUSE";
+                this.els.toggleBtn.setAttribute('aria-label', '일시정지');
+                this.els.toggleBtn.classList.add('primary-active');
+                this.els.timerInput.readOnly = true;
+                this.els.logContainer.style.opacity = 1;
+            }
+
+            setPaused(label = "RESUME FOCUS") {
+                this.els.toggleBtn.innerText = label;
+                this.els.toggleBtn.setAttribute('aria-label', label === 'START FOCUS' ? '포커스 시작' : '포커스 재개');
+                this.els.toggleBtn.classList.remove('primary-active');
+                this.els.timerInput.readOnly = false;
+                this.els.logContainer.style.opacity = 0.3;
+            }
+
+            showBreak(minutes, isLong) {
+                const type = isLong ? '긴 휴식' : '짧은 휴식';
+                this.els.breakBanner.textContent = `☕ ${type} ${minutes}분`;
+                this.els.breakBanner.classList.add('active');
+            }
+
+            hideBreak() {
+                this.els.breakBanner.classList.remove('active');
+            }
+        }
+
+        // ========== Instances ==========
+        const stats = new StatsManager();
+        const audio = new AudioEngine();
+        const timer = new TimerManager();
+        let ui; // declared here, assigned after DOM ready
+
+        // ========== Core Logic ==========
+        async function handleToggle() {
+            if (timer.isPlaying) {
+                await handlePause();
+            } else {
+                await handleStart();
+            }
+        }
+
+        async function handleStart() {
+            // Parse input if fresh start
+            if (timer.timeLeft === timer.originalTime && !timer.isBreak) {
+                const val = timer.parseTimeInput(ui.els.timerInput.value);
+                if (val === null) {
+                    ui.showError(`${CONFIG.MIN_MINUTES}~${CONFIG.MAX_MINUTES}분 사이의 값을 입력하세요 (예: 25:00)`);
+                    ui.els.timerInput.value = timer.formatTime(timer.originalTime);
+                    return;
+                }
+                timer.originalTime = val;
+                timer.timeLeft = val;
+            }
+
+            // Init audio
+            try {
+                await audio.init();
+            } catch (err) {
+                ui.showError(err.message);
+                return;
+            }
+
+            // Request notification permission
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().catch(() => {});
+            }
+
+            // Start timer
+            timer.timerInterval = setInterval(() => {
+                timer.timeLeft--;
+                const display = timer.formatTime(timer.timeLeft);
+                ui.els.timerInput.value = display;
+                ui.updateTitle(display);
+                if (timer.timeLeft <= 0) finishSession();
             }, 1000);
 
-            toggleBtn.innerText = "PAUSE"; 
-            toggleBtn.classList.add('primary-active');
-            timerInput.readOnly = true;
-            logContainer.style.opacity = 1; 
-            
-            STATE.isPlaying = true;
-            
-            if(!padSynth) initAudio().then(() => Tone.Transport.start());
-            else Tone.Transport.start();
+            ui.setPlaying();
+            ui.hideBreak();
+            timer.isPlaying = true;
 
-            addLog("SYSTEM", "Focus_Session_Started", 1.0);
+            audio.start();
+
+            const label = timer.isBreak ? "Break_Started" : "Focus_Session_Started";
+            ui.addLog("SYSTEM", label, 1.0);
         }
 
-        function pauseTimer() {
-            clearInterval(STATE.timerInterval);
-            Tone.Transport.pause();
-            if(padSynth) padSynth.releaseAll();
+        async function handlePause() {
+            clearInterval(timer.timerInterval);
+            await audio.pause();
 
-            toggleBtn.innerText = "RESUME FOCUS";
-            toggleBtn.classList.remove('primary-active');
-            timerInput.readOnly = false;
-            logContainer.style.opacity = 0.3; 
-            
-            STATE.isPlaying = false;
-            addLog("SYSTEM", "Session_Paused", 0.0);
+            ui.setPaused("RESUME FOCUS");
+            ui.updateTitle(null);
+            timer.isPlaying = false;
+            ui.addLog("SYSTEM", "Session_Paused", 0.0);
         }
 
-        function resetTimer() {
-            pauseTimer();
-            STATE.timeLeft = STATE.originalTime;
-            timerInput.value = formatTime(STATE.originalTime);
-            toggleBtn.innerText = "START FOCUS";
-            Tone.Transport.stop();
-            logContainer.innerHTML = ""; 
-            addLog("SYSTEM", "Timer_Reset", 0.0);
+        function handleReset() {
+            if (timer.isPlaying) return;
+            clearInterval(timer.timerInterval);
+            timer.isBreak = false;
+            timer.timeLeft = timer.originalTime;
+            ui.els.timerInput.value = timer.formatTime(timer.originalTime);
+            ui.setPaused("START FOCUS");
+            ui.updateTitle(null);
+            ui.hideBreak();
+            audio.stop();
+            ui.els.logContainer.innerHTML = "";
+            ui.addLog("SYSTEM", "Timer_Reset", 0.0);
         }
 
-        function finishSession() {
-            pauseTimer();
-            toggleBtn.innerText = "START FOCUS";
-            timerInput.readOnly = false;
-            STATE.timeLeft = STATE.originalTime;
-            timerInput.value = formatTime(STATE.originalTime);
+        async function finishSession() {
+            clearInterval(timer.timerInterval);
+            await audio.pause();
+            timer.isPlaying = false;
 
-            const synth = new Tone.Synth({
-                oscillator: { type: "triangle" }, 
-                envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
-            }).toDestination();
+            if (timer.isBreak) {
+                // Break finished
+                timer.isBreak = false;
+                timer.timeLeft = timer.originalTime;
+                ui.els.timerInput.value = timer.formatTime(timer.originalTime);
+                ui.setPaused("START FOCUS");
+                ui.hideBreak();
+                ui.updateTitle(null);
+                audio.stop();
+                ui.addLog("SYSTEM", "Break_Complete", 1.0);
+                audio.playFinishChime();
+                return;
+            }
 
-            const now = Tone.now();
-            synth.volume.value = -10;
-            synth.triggerAttackRelease("C5", "16n", now);
-            synth.triggerAttackRelease("E5", "16n", now + 0.1);
-            synth.triggerAttackRelease("G5", "16n", now + 0.2);
-            synth.triggerAttackRelease("C6", "8n",  now + 0.3);
-            
-            addLog("SYSTEM", "Session_Complete", 1.0);
-        }
+            // Focus session finished
+            const sessionMinutes = Math.round(timer.originalTime / 60);
+            stats.recordSession(sessionMinutes);
+            timer.completedSessions++;
+            ui.updateStats(stats.getDisplayText());
 
-        function addLog(source, note, vol) {
-            const div = document.createElement('div');
-            div.className = 'log-entry';
-            
-            const now = new Date();
-            const ts = `[${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}]`;
-            
-            div.innerHTML = `<span class="log-ts">${ts}</span> <span class="log-src">${source}</span> :: emit(<span class="log-note">${note}</span>) vol:${vol.toFixed(2)}`;
-            
-            logContainer.appendChild(div);
-            
-            if (logContainer.children.length > 12) {
-                logContainer.removeChild(logContainer.firstChild);
+            audio.playFinishChime();
+            ui.addLog("SYSTEM", "Session_Complete", 1.0);
+
+            // Notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+                try { new Notification("DevFocus", { body: "세션 완료! 휴식하세요. ☕" }); } catch {}
+            }
+
+            // Pomodoro break
+            const pomoEnabled = ui.els.pomoToggle.checked;
+            if (pomoEnabled) {
+                const breakMin = timer.getBreakMinutes();
+                const isLong = breakMin === CONFIG.LONG_BREAK_MIN;
+                timer.isBreak = true;
+                timer.timeLeft = breakMin * 60;
+                ui.els.timerInput.value = timer.formatTime(timer.timeLeft);
+                ui.showBreak(breakMin, isLong);
+                ui.setPaused("START BREAK");
+                ui.updateTitle(null);
+                audio.stop();
+            } else {
+                timer.timeLeft = timer.originalTime;
+                ui.els.timerInput.value = timer.formatTime(timer.originalTime);
+                ui.setPaused("START FOCUS");
+                ui.updateTitle(null);
+                audio.stop();
             }
         }
 
-        function pulseHalo(isStrong) {
-            const size = isStrong ? "100px" : "50px";
-            const opacity = isStrong ? "0.15" : "0.05";
-            halo.style.boxShadow = `0 0 ${size} ${size} rgba(88, 166, 255, ${opacity})`;
-            setTimeout(() => { halo.style.boxShadow = `0 0 0 0 rgba(88, 166, 255, 0)`; }, 1000);
-        }
+        // ========== Init ==========
+        ui = new UIController();
+        ui.updateStats(stats.getDisplayText());
 
-        toggleBtn.addEventListener('click', () => STATE.isPlaying ? pauseTimer() : startTimer());
-        resetBtn.addEventListener('click', resetTimer);
-        timerInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                timerInput.blur();
-                if (!STATE.isPlaying) startTimer();
-            }
-        });
+        // Register service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
+    })();
     </script>
 </body>
 </html>
